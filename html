@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastProxy Operational Dashboard</title>
+    <!-- Tailwind CSS for sleek, instant styling -->
+    <script src="https://jsdelivr.net"></script>
+    <!-- Chart.js for data visualization -->
+    <script src="https://jsdelivr.net"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-6">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="flex justify-between items-center border-b border-slate-700 pb-4 mb-8">
+            <div>
+                <h1 class="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
+                    🛡️ FastProxy Control Center
+                </h1>
+                <p class="text-slate-400 text-sm mt-1">Live streaming microservice edge metrics</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20 animate-pulse">
+                    ● Proxy Connected
+                </span>
+                <button onclick="fetchMetrics()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded transition">
+                    Refresh Now
+                </button>
+            </div>
+        </header>
+
+        <!-- Stat Grid Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
+                <p class="text-sm font-medium text-slate-400 uppercase">Total Volume</p>
+                <p id="total-requests" class="text-3xl font-bold mt-2 text-white">0</p>
+            </div>
+            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
+                <p class="text-sm font-medium text-slate-400 uppercase">System Faults</p>
+                <p id="total-errors" class="text-3xl font-bold mt-2 text-rose-400">0</p>
+            </div>
+            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
+                <p class="text-sm font-medium text-slate-400 uppercase">Cache Saved Hits</p>
+                <p id="total-cached" class="text-3xl font-bold mt-2 text-amber-400">0</p>
+            </div>
+            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
+                <p class="text-sm font-medium text-slate-400 uppercase">Avg Response Time</p>
+                <p id="avg-time" class="text-3xl font-bold mt-2 text-cyan-400">0ms</p>
+            </div>
+        </div>
+
+        <!-- Charts Section Layout -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Distribution Chart Card -->
+            <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl">
+                <h3 class="text-lg font-semibold mb-4 text-white">Endpoint Traffic Load</h3>
+                <div class="relative h-64">
+                    <canvas id="trafficChart"></canvas>
+                </div>
+            </div>
+            <!-- Error Tracking Card -->
+            <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl">
+                <h3 class="text-lg font-semibold mb-4 text-white">Endpoint Failures</h3>
+                <div class="relative h-64">
+                    <canvas id="errorChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interface Controller Logic -->
+    <script>
+        const METRICS_ENDPOINT = 'http://127.0.0';
+        let trafficChart, errorChart;
+
+        // Initialize empty telemetry UI charts
+        function initCharts() {
+            const ctxTraffic = document.getElementById('trafficChart').getContext('2d');
+            trafficChart = new Chart(ctxTraffic, {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'Requests', data: [], backgroundColor: '#3b82f6' }] },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+            });
+
+            const ctxError = document.getElementById('errorChart').getContext('2d');
+            errorChart = new Chart(ctxError, {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ label: 'Errors', data: [], backgroundColor: ['#f43f5e', '#fb7185', '#fda4af'] }] },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // Pull telemetry straight from the Go proxy engine instance
+        async function fetchMetrics() {
+            try {
+                const response = await fetch(METRICS_ENDPOINT);
+                if (!response.ok) throw new Error('Proxy returned bad status');
+                const data = await response.json();
+
+                // Core Stat update elements
+                document.getElementById('total-requests').textContent = data.total_requests || 0;
+                document.getElementById('total-errors').textContent = data.total_errors || 0;
+                document.getElementById('total-cached').textContent = data.total_cached || 0;
+                document.getElementById('avg-time').textContent = (data.avg_response_time_ms || 0) + 'ms';
+
+                // Format and safely parse complex multi-endpoint arrays
+                const trafficLabels = Object.keys(data.requests_by_endpoint || {});
+                const trafficValues = Object.values(data.requests_by_endpoint || {});
+                trafficChart.data.labels = trafficLabels.length ? trafficLabels : ['No Activity'];
+                trafficChart.data.datasets[0].data = trafficValues.length ? trafficValues :;
+                trafficChart.update();
+
+                const errorLabels = Object.keys(data.errors_by_endpoint || {});
+                const errorValues = Object.values(data.errors_by_endpoint || {});
+                errorChart.data.labels = errorLabels.length ? errorLabels : ['Healthy Status'];
+                errorChart.data.datasets[0].data = errorValues.length ? errorValues :;
+                errorChart.update();
+
+            } catch (err) {
+                console.error("Dashboard failed pulling telemetry matrix:", err);
+            }
+        }
+
+        // Lifecycle Hooks
+        window.onload = () => {
+            initCharts();
+            fetchMetrics();
+            // Loop telemetry fetch every 3 seconds
+            setInterval(fetchMetrics, 3000);
+        };
+    </script>
+</body>
+</html>
